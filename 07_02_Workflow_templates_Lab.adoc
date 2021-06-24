@@ -1,0 +1,91 @@
+:scrollbar:
+:data-uri:
+:linkattrs:
+:imagesdir: images
+:toc2:
+:opencf: link:https://labs.opentlc.com/[OPENTLC lab portal^]
+:course_name: Advanced Deployment with Red Hat Ansible Automation
+:account_management: link:https://www.opentlc.com/account/[OPENTLC Account Management^]
+:catalog_name: OPENTLC Automation
+:catalog_item_name1: Ansible Advanced - Lab
+:need_client: false
+:show_solution: false
+
+
+== Workflow: Single click Deployment 
+
+In this lab you will create experience Ansible tower to create sequences consisting of any combination of job templates, project syncs, and inventory syncs that are linked together in order to execute them as a single unit.
+
+
+
+=== Infrastrucre Provision Workflow
+
+In this section, you will create workflow template to provision infrasturcture, verfiy connection to osp instnaces and cleanup if provisioning job template is unsuccesful.
+
+. Create Infrastructure Provision Workflow from the job templates: 
+.. Workflow Name: *Infrastructure Provision*
+.. Workflow should run `09_Clean_Up` if any of the other job template fails. 
++
+|=====
+| Job Template Name | Purpsose
+| 06_Cloud_Provisioner | For provisioning osp instances
+| 07_Check_Connection | For checking connectivity to newly created instances
+| 08_Network_Config | Setup Network COnfiguration
+| 09_Clean_Up | If provisioning process fails then clean up
+|=====
+
+image::infra_workflow.png[]
+
+
+== Muti-tier Application Deploy Workflow
+
+In this section, you will create workflow template to deploy muti tier app and cleanup if deployment job template is unsuccesful.
+
+In the Muti-tier Application Deploy, you will expericne Workflow Convergence.
+
+In Red Hat Ansible Tower 3.1 we released a feature called Workflows. The feature, effectively, allowed users to compose job templates into arbitrary graph trees. A simple workflow we saw users creating was a linear pipeline.
+
+The workflow feature also allowed branching. Each branch can run in parallel.
+
+But something was missing. The ability to wait for previous parallel operations to finish before proceeding. In Red Hat Ansible Tower 3.4 is now possible with the introduction of the Workflow Convergence feature.
+
+Workflow Convergence feature mapped better to actual working practices. 
+
+
+
+. Create Muti-tier Application Deploy from the job templates: 
+.. Workflow Name: *Multi-Tier App Deploy*
+.. Workflow should run `09_Clean_Up` if any of the other job template fails. 
+
+image::app_deploy.png[]
+
++
+|=====
+| Job Template Name | Purpsose
+| 11_Add_Subscription | Register OSP instances with Satellite
+| 12_Database_tier | Setup Database server
+| 13_App_Tier | Setup Application Server
+| 14_Lb_Tier | Setup loadbalacer Server
+| 15_Smoke_Test | RUn smkoke test to verify app deployment
+| 09_Clean_Up | If provisioning process fails then clean up
+|=====
+
+. Check the *details* of the job template `Smoke Test` to verify deployment is successful. 
+
+ 
+
+== Nested Workflow (Optional)
+
+In this section, you can create nested workflow which mimics real world scenario of provisioning and deployment process running 
+ together with a Single Click Deployment.
+
+
+. Before proceeding, Please run `09_Clean_up` job template before proceeding to test nested workflow.
+
+. Create nested workflow Name: `Single Click Deployment` using *Infrastructure Provision* and  *Muti-tier Application Deploy* workflows.
++
+image::nested_workflow.png[]
+
+. Check the *details* of the job template `Smoke Test` to verify deployment is successful. 
+
+

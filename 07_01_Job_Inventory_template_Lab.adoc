@@ -1,0 +1,420 @@
+:scrollbar:
+:data-uri:
+:linkattrs:
+:imagesdir: images
+:toc2:
+:opencf: link:https://labs.opentlc.com/[OPENTLC lab portal^]
+:course_name: Advanced Deployment with Red Hat Ansible Automation
+:account_management: link:https://www.opentlc.com/account/[OPENTLC Account Management^]
+:catalog_name: OPENTLC Automation
+:catalog_item_name1: Ansible Advanced - Lab
+:need_client: false
+:show_solution: false
+
+
+== Infrastrcuture Provision and Multi-Tier App Deploy Through Ansible Tower
+
+In this, you will be configuring Ansible Tower to provision openstack instances and deploy multi-tier app on the instances 
+ you provision.
+
+The lab will be done using Web console of Ansible Tower, which you have installed previously. 
+
+
+
+=== Connect to Ansible Tower Webconsole
+
+. Use your browser at `https://control.{{GUID}}.dynamic.opentlc.com:8443`.
+
+. Log in to the Ansible Tower web interface as the administrator using the `admin`
+account and `r3dh4t1!` as the password.
+
+
+=== Create projects 
+
+In this section, you will create two projects from pre-populated Gitlab repos.
+
+
+. Create project with repo, which includes playbooks to provision Openstack instances.
++
+|=========
+| NAME | 01_OSP Infra Provisioner
+| DESCRIPTION | Openstack Infra provisioner
+| SCM TYPE | Git
+| SCM URL  | http://control.example.com:8929/devops/osp-infra-provisioner.git
+| SCM UPDATE OPTIONS | UPDATE REVISION ON LAUNCH
+|=========
+
+
+. Create project with repo, which includes playbooks to deploy multi tier app.
++
+|=========
+| NAME | 02_Modular Three Tier App
+| DESCRIPTION | Multi Tier App Deploy
+| SCM TYPE | Git
+| SCM URL  | http://control.example.com:8929/devops/modular-three-tier-app.git
+| SCM UPDATE OPTIONS | UPDATE REVISION ON LAUNCH
+|=========
+
+
+
+=== Create Credentials
+
+In this section, you will create openstack credentials which will be used for inventory sync and for running job templates to 
+  provision instances on Openstack.
+
+You will also create machine credentials to connect to openstack instances.
+
+Openstack credential details can be referred from `clouds.yaml` on your control host. For machine credentials, use *$GUIDkey.pem* as private key. Respectice public will be injected during provisoning of instances. 
+
+
+. Refer to `clouds.yaml` on control host.
++
+[source,sh]
+----
+[devops@control 0 ~]$ cat $HOME/.config/openstack/clouds.yaml
+----
+
+. Sample Output
++
+[source,sh]
+----
+clouds:
+  $GUID-project:
+    auth:
+      auth_url: "https://api.orange.sc01.infra.opentlc.com:13000//v3"
+      username: "$GUID-user"
+      project_name: "$GUID-project"
+      project_id: "f6b065c103c542afaa0455034dd9ee4f"
+      user_domain_name: "Default"
+      password: "password"
+    region_name: "regionOne"
+    interface: "public"
+    identity_api_version: 3
+----
+
+. Create Openstack Credential
++
+|=========
+| NAME | 03_Openstack_Creds 
+| DESCRIPTION | Openstack Credentials
+| ORGANIZATION | Default
+| CREDENTIAL TYPE | Openstack
+| USERNAME | $GUID-user
+| PASSWORD (API KEY) | password
+| HOST (AUTHENTICATION URL) | https://api.orange.sc01.infra.opentlc.com:13000//v3
+| PROJECT (TENANT NAME) | $GUID-project
+| DOMAIN NAME | Default
+|=========
+
+. Create Machine Credential
++
+|=========
+| NAME | 04_SSH_PRIVATE_KEY 
+| DESCRIPTION | SSH KEY
+| ORGANIZATION | Default
+| CREDENTIAL TYPE | Machine
+| USERNAME | cloud-user
+| SSH PRIVATE KEY | `content from $HOME/.ssh/$GUIDkey.pem`
+|=========
+
+. CLick Save
+
+=== Create Inventory for Infra provisioning
+
+In this, section you will add static inventory to run Infra provision playbooks on `localhost`.
+
+
+. Create Inventory to add tower nodes to run infra provisioning playbooks.
++
+|=========
+| NAME | 05_Control_Node
+| DESCRIPTION | Tower Nodes as control node
+| ORGANIZATION | Default
+|=========
+
+.. Click `SAVE`
+
+. Click on *GROUPS* on the same screen to add hostgroup.
++
+|=========
+| NAME | control_node
+| DESCRIPTION | Control Node Group
+|=========
+
+.. Click *SAVE*
+
+. Click `HOSTS` to add `localhost`.
+
+|=========
+| HOST NAME | localhost
+| DESCRIPTION | Control Node
+| VARIABLES | ansible_connection: local +
+              ansible_python_interpreter: '{{ ansible_playbook_python }}' +
+              GUID: <GUID Value>
+|=========
+
+=== Create Job templates for Infra provisioning and configuration
+
+In this section, you will create job templates to provision, configure check connctivity and deprovision openstack instances.
+
+. Create Job Template to provision Openstack Instances.
++
+
+|=========
+| NAME | 06_Cloud_Provisioner
+| DESCRIPTION | Openstack Instance Provisioner
+| ORGANIZATION | Default
+| JOB TYPE | Run
+| INVENTORY | 04_Control_Node
+| PROJECT | 01_OSP Infra Provisioner
+| PLAYBOOK| manage-servers.yml
+| CREDENTIALS | OPENSTACK -> 03_Openstack_Creds
+|=========
+
+.. Click Save
+
+.. Launch the `06_Cloud_Provisioner` to provision instances.
++
+[TIP]
+Please keep refreshing the browser to check the status of job and for watching log messages.
+
+. Create Job Template to check connectivity to newly provisioned instances.
++
+
+|=========
+| NAME | 07_Check_Connection
+| DESCRIPTION | Instance connectivity checker
+| ORGANIZATION | Default
+| JOB TYPE | Run
+| INVENTORY | 05_Control_Node
+| PROJECT | 01_OSP Infra Provisioner
+| PLAYBOOK| test_connectivity.yml
+| CREDENTIALS | OPENSTACK -> 03_Openstack_Creds +
+                MACHINE -> 04_SSH_PRIVATE_KEY
+|=========
+
+.. Click Save
+
+.. Launch the `07_Check_Connection` to verify connectivity.
+
+. Create Job Template to configure network configuration.
++
+
+|=========
+| NAME | 08_Network_config
+| DESCRIPTION | Set DNS server
+| ORGANIZATION | Default
+| JOB TYPE | Run
+| INVENTORY | 05_Control_Node
+| PROJECT | 01_OSP Infra Provisioner
+| PLAYBOOK| test_connectivity.yml
+| CREDENTIALS | OPENSTACK -> 03_Openstack_Creds +
+                MACHINE -> 04_SSH_PRIVATE_KEY
+| OPTIONS | ENABLE PRIVILEGE ESCALATION
+|=========
+
+.. Click Save
+
+.. Launch the `08_Network_config` to setup dns in resolv.conf.
+
+
+. Create Job template to deprovison the openstack instances. 
++
+
+|=========
+| NAME | 09_Clean_up
+| DESCRIPTION | Deprovison Instances
+| ORGANIZATION | Default
+| JOB TYPE | Run
+| INVENTORY | 05_Control_Node
+| PROJECT | 01_OSP Infra Provisioner
+| PLAYBOOK| destroy_servers.yml
+| CREDENTIALS | OPENSTACK -> 03_Openstack_Creds
+|=========
+
+.. Click Save
+
+
+
+=== Create Inventory for Multi-Tier App Deploy
+
+
+In this, section you will add dynamic inventory to fetch information of openstack instances which were created during infra provisionign steps.
+
+
+. Create Openstack Dynamic Inventory. 
++
+|=========
+| NAME | 10_Openstack_Inventory
+| DESCRIPTION | Openstack Inventory
+| ORGANIZATION | Default
+|=========
+
+.. Click `SAVE`
+
+. Click on *SOURCES* on the same screen to add hostgroup.
++
+|=========
+| NAME | Openstack
+| DESCRIPTION | Dynamic Inventory source
+| SOURCE | Openstack
+| CREDENTIAL | 03_Openstack_Creds
+| UPDATE OPTIONS | OVERWRITE +
+                   UPDATE ON LAUNCH
+|=========
+
+.. Click *SAVE*
+
+.. At the bottom of your screen click on *SYNC* icon under `10_Openstack_Inventory` pane or you can also click on *SYNC ALL* button.
+
+.. Once sync finishes click on *GROUPS* and *HOSTS* to verify openstack instances are listed.
+
+.. You will add static hostgroups and make groups synced from dynamic inventory as children to reflect your multi-tier playbooks.
+
+.. Click on *GROUPS*, add static groups.
++
+|=========
+| NAME |  load_balancers +
+          backend_servers +
+          database_servers +
+|=========
+
+.. Add existing child groups to parent static group.
++
+|=========
+| Parent Group | Existing Group 
+| load_balancers | meta-AnsibleGroup_load_balancers
+| backend_servers | meta-AnsibleGroup_backend_servers
+| database_servers | meta-AnsibleGroup_database_servers
+|=========
+
+
+=== Create Job temaptes for muti tier app deploy.
+
+In this section your will create job templates to deploy muti tier app. For each tier you will use seperate job template.
+
+[NOTE]
+We are using sperate job templates for each tier to show *Workflow Converngence*, in next lab. 
+
+
+. Create Job template to register openstack instances with Satellite server.
+
++
+
+|=========
+| NAME | 11_Add_Subscription
+| DESCRIPTION | Satellite Registration
+| ORGANIZATION | Default
+| JOB TYPE | Run
+| INVENTORY | 10_Openstack_Inventory
+| PROJECT | 02_Modular Three Tier App
+| PLAYBOOK| add_subscription.yml
+| CREDENTIALS | MACHINE -> 04_SSH_PRIVATE_KEY
+| OPTIONS | ENABLE PRIVILEGE ESCALATION
+|=========
+
+.. Click Save
+
+.. Launch the `11_Subscription` to register instances.
+
+. Create Job template to deploy database tier
+
++
+
+|=========
+| NAME | 12_Database_Tier
+| DESCRIPTION | Setup Database Server
+| ORGANIZATION | Default
+| JOB TYPE | Run
+| INVENTORY | 10_Openstack_Inventory
+| PROJECT | 02_Modular Three Tier App
+| PLAYBOOK| main_appdbs.yml
+| CREDENTIALS | MACHINE -> 04_SSH_PRIVATE_KEY
+| OPTIONS | ENABLE PRIVILEGE ESCALATION
+|=========
+
+.. Click Save
+
+.. Launch the `12_Database_Tier` to setup mysql database.
+
+. Create Job template to deploy app tier
+
++
+
+|=========
+| NAME | 13_App_Tier
+| DESCRIPTION | Setup App Servers
+| ORGANIZATION | Default
+| JOB TYPE | Run
+| INVENTORY | 10_Openstack_Inventory
+| PROJECT | 02_Modular Three Tier App
+| PLAYBOOK| main_apps.yml
+| CREDENTIALS | MACHINE -> 04_SSH_PRIVATE_KEY
+| OPTIONS | ENABLE PRIVILEGE ESCALATION
+|=========
+
+.. Click Save
+
+.. Launch the `13_App_Tier` to setup app servers.
+
+. Create Job template to deploy app tier
+
++
+
+|=========
+| NAME | 14_Lb_Tier
+| DESCRIPTION | Setup Frontend Server
+| ORGANIZATION | Default
+| JOB TYPE | Run
+| INVENTORY | 10_Openstack_Inventory
+| PROJECT | 02_Modular Three Tier App
+| PLAYBOOK| main_frontends.yml
+| CREDENTIALS | MACHINE -> 04_SSH_PRIVATE_KEY
+| OPTIONS | ENABLE PRIVILEGE ESCALATION
+|=========
+
+.. Click Save
+
+.. Launch the `14_Lb_Tier` to setup frontend servers.
+
+
+=== Create Job template for smoke test
+
+In this section, you will create a job template for smoke test, to verify your application.
+
+. Create Job template for smoke test
+
++
+
+|=========
+| NAME | 15_Smoke_Test
+| DESCRIPTION | Smoke Test
+| ORGANIZATION | Default
+| JOB TYPE | Run
+| INVENTORY | 04_Control_Node
+| PROJECT | 02_Modular Three Tier App
+| PLAYBOOK| main_apps.yml
+| CREDENTIALS | MACHINE -> 04_SSH_PRIVATE_KEY
+| OPTIONS | ENABLE PRIVILEGE ESCALATION
+|=========
+
+.. Click Save
+
+.. Launch the `15_Smoke_Test` to verify application.
+
+.. Click on `results` section in the job template log file. 
++
+image::result.png[]
++
+[source,text]
+----
+"content": "<!DOCTYPE html>\n<html>\n<head>\n<title>Ansible GitOps Integration Lab</title>\n</head>\n<body>\n<center>\n<h1> <img src=images/ansible_bg.png alt='Ansible Automation Platform' width=300 height=100> </h1>root redhat /bin/bash /root<br />"
+----
+
+
+. Congratulation you have successfully provisioned infrastructure and deployed app suing Ansible Tower. 
+
+
+=== Cleanup 
+
+. Please run `09_Clean_up` job template before proceeding next lab.
